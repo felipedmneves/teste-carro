@@ -5,214 +5,96 @@ require_once 'Rest.class.php';
 require_once 'Carro.class.php';
 
 class API extends REST{
-		public $data = '';
+	public $data = '';
+	public $carros;
 
-		const DB_SERVER   = 'localhost';
-		const DB_USER     = 'root';
-		const DB_PASSWORD = '';
-		const DB          = 'test';
+	public function __construct(){
+		parent::__construct();
 
-		private $db = NULL;
+		$this->InstanceCarros();
+		$this->setCarros();		
+		
+		$this->processApi();
+	}
 
-		public function __construct(){
-			parent::__construct();	// Inicia o contructor Pai
-			$this->dbConnect();			// Iniciar a conexão com o banco de dados
+
+	private function InstanceCarros(){
+		$this->carros = new Carro();
+	}
+
+	private function setCarros(){		
+		$this->cadastraCarro(1, 'Chevrolet', 'Corsa', 2009);
+		$this->cadastraCarro(2, 'Mitsubishi', 'Pajero TR4', 2008);
+		$this->cadastraCarro(3, 'Fiat', 'Uno', 1994);
+	}
+
+	public function processApi(){
+		$func = strtolower(trim(str_replace('/', '', $_REQUEST['rquest'])));
+
+		if((int)method_exists($this, $func) > 0){
+			$this->$func();
 		}
-
-		/*
-		 * Conexão com o banco
-		*/
-		private function dbConnect(){
-			$this->db = mysqli_connect(self::DB_SERVER, self::DB_USER, self::DB_PASSWORD, self::DB);
-
-			if(!$this->db){
-				$error = array('status' => 'Erro',
-											 'msg'    => 'Não foi possível conectar ao MySQL.' . PHP_EOL .
-											 						 mysqli_connect_errno() . ': ' . mysqli_connect_error());
-
-				$this->response($this->json($error), 500);
-			}
+		else{
+			$this->response("Método {$func} inválido.", 404);
 		}
+	}
+	
+	private function carros(){
+		switch($this->get_request_method()){
+			case 'GET':
+				$id = $this->_request['id'];
 
-		/*
-		 * Método público para acesso à API.
-		 * Este método chama dinamicamente o método baseado na cadeia de consulta
-		 */
-		public function processApi(){
-			$func = strtolower(trim(str_replace('/', '', $_REQUEST['rquest'])));
-
-			if((int)method_exists($this, $func) > 0){
-				$this->$func();
-			}
-			else{
-				$this->response("Método {$func} inválido.", 404);	// Se o método não existir dentro desta classe, a resposta será "Página não encontrada".
-			}
-		}
-
-		/*
-		 *	Simples API de login
-		 *  Login deve ser por método POST
-		 *  email: <EMAIL DO USUÁRIO>
-		 *  pwd  : <SENHA DO USUÁRIO>
-		 */
-		private function login(){
-			if($this->get_request_method() != 'POST'){
-				$error = array('status' => 'Erro',
-											 'msg'    => 'Método ' . $this->get_request_method() . 'inválido.');
-
-				$this->response($this->json($error), 406);
-			}
-
-			$email    = $this->_request['email'];
-			$password = $this->_request['pwd'];
-
-			if(empty($email) or empty($password)){
-				$validation = '';
-
-				if(empty($email)){
-					$validation .= 'Campo E-mail não informado.' . PHP_EOL;
-				}
-				if(filter_var($email, FILTER_VALIDATE_EMAIL)){
-					$validation .= 'E-mail inválido.' . PHP_EOL;
-				}
-
-				if(empty($password)){
-					$validation .= 'Campo Senha não informado.' . PHP_EOL;
-				}
-
-				$error = array('status' => 'Falha',
-											 'msg'    => 'Falha no Login:' . PHP_EOL . $validation);
-
-				$this->response($this->json($error), 400);
-			}
-
-			if(!empty($email) or !empty($password)){
-				$query  = " SELECT user_id,
-													 user_fullname,
-													 user_email
-											FROM users
-										 WHERE user_email    = '{$email}'
-										   AND user_password = '{$password}'
-										 LIMIT 1 ";
-
-				$result = mysqli_query($this->db, $query);
-
-				if(mysqli_num_rows($result) > 0){
-					$this->response($this->json(mysqli_fetch_array($result, MYSQL_ASSOC)), 200);
+				if(isset($id)){
+					$this->retornaCarro($id);
 				}
 				else{
-					if(mysqli_error($this->db)){
-						$error = array('status' => 'Erro',
-													 'msg'    => 'Não foi possível listar os Usuários.' . PHP_EOL .
-											 								 mysqli_errno($this->db) . ': ' . mysqli_error($this->db));
-
-						$this->response($this->json($error), 500);
-					}
-					else{
-						$this->response('', 204);
-					}
+					$this->listaCarros();
 				}
-			}
-		}
+			break;
 
-		private function users(){
-			if($this->get_request_method() != 'GET'){
-				$error = array('status' => 'Erro',
-											 'msg'    => 'Método ' . $this->get_request_method() . 'inválido.');
+			case 'POST':
+				$id     = $this->carros->getIndexNewRow();
+				$marca  = $this->_request['marca'];
+				$modelo = $this->_request['modelo'];
+				$ano    = $this->_request['ano'];
 
-				$this->response($this->json($error), 406);
-			}
+				$this->cadastraCarro($id, $marca, $modelo, $ano);
 
-			$query  = " SELECT user_id,
-												 user_fullname,
-												 user_email
-									  FROM users
-									 WHERE user_status = 1 ";
+				$this->listaCarros();
+			break;
 
-			$result = mysqli_query($this->db, $query);
+			case 'DELETE':
+				$id = $this->_request['id'];
 
-			if(mysqli_num_rows($result) > 0){
-				$this->response($this->json(mysqli_fetch_array($result, MYSQL_ASSOC)), 200);
-			}
-			else{
-				if(mysqli_error($this->db)){
-					$error = array('status' => 'Erro',
-												 'msg'    => 'Não foi possível listar os Usuários.' . PHP_EOL .
-										 								 mysqli_errno($this->db) . ': ' . mysqli_error($this->db));
+				$this->apagaCarro($id);
 
-					$this->response($this->json($error), 500);
-				}
-				else{
-					$this->response('', 204);
-				}
-			}
-		}
-
-		private function deleteUser(){
-			if($this->get_request_method() != 'DELETE'){
-				$error = array('status' => 'Erro',
-											 'msg'    => 'Método ' . $this->get_request_method() . 'inválido.');
-
-				$this->response($this->json($error), 406);
-			}
-
-			$id = (int) $this->_request['id'];
-
-			if($id > 0){
-				$query  = " DELETE
-										  FROM usersa
-										 WHERE user_id = {$id} ";
-
-				$result = mysqli_query($this->db, $query);
-
-				if(mysqli_error($this->db)){
-					$error = array('status' => 'Erro',
-												 'msg'    => 'Não foi possível listar os Usuários.' . PHP_EOL .
-										 								 mysqli_errno($this->db) . ': ' . mysqli_error($this->db));
-
-					$this->response($this->json($error), 500);
-				}
-				else{
-					$success = array('status' => 'Sucesso',
-													 'msg'    => 'registro excluído êxito');
-
-					$this->response($this->json($success), 200);
-				}
-			}
-			else{
-				$error = array('status' => 'Falha',
-											 'msg'    => 'Parâmetro inválido');
-
-				$this->response($this->json($error), 200);
-			}
-		}
-
-		private function teste(){
-			if($this->get_request_method() != 'GET'){
-				$error = array('status' => 'Erro',
-											 'msg'    => 'Método ' . $this->get_request_method() . 'inválido.');
-
-				$this->response($this->json($error), 406);
-			}
-
-			$carro = new Carro();
-			$carro->setCarro(1, 'Chevrolet', 'Corsa', 2009);
-			$carro->setCarro(2, 'Mitsubishi', 'Pajero TR4', 2008);
-
-			$this->response($this->json($carro->getCarro(1)), 200);
-		}
-
-		/*
-		 * Codifica o Array no JSON
-		*/
-		private function json($data){
-			if(is_array($data)){
-				return json_encode($data);
-			}
+				$this->listaCarros();
+			break;
 		}
 	}
 
-	// Inicia a Biblioteca
-	$api = new API;
-	$api->processApi();
+	private function listaCarros(){
+		$this->response($this->json($this->carros->listarCarros()), 200);
+	}
+
+	private function retornaCarro($id){
+		$this->response($this->json($this->carros->getCarro($id)), 200);
+	}
+
+	private function cadastraCarro($id, $marca, $modelo, $ano){
+		$this->carros->setCarro($id, $marca, $modelo, $ano);
+	}
+
+	private function apagaCarro($id){
+		$this->carros->excluirCarro($id);
+	}
+	
+	private function json($data){
+		if(is_array($data)){
+			return json_encode($data);
+		}
+	}
+}
+
+$api = new API;
 ?>
